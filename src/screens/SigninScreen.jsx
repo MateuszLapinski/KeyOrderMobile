@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import {
   SafeAreaView,
   View,
@@ -10,24 +10,92 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthContext } from '../../App';
 
 export default function SigninScreen({ navigation }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const { setAuth } = useContext(AuthContext);
 
-  const handleSignIn = () => {
-    // Tu wrzuć logikę logowania (walidacja + API)
-    console.log('E-mail:', email);
-    console.log('Password:', password);
-    navigation.replace('Home');
+  const [email, setEmail]           = useState('');
+  const [password, setPassword]     = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [loading, setLoading]       = useState(false);
+
+  const validate = () => {
+    let valid = true;
+    if (!email.trim()) {
+      setEmailError('E-mail jest wymagany');
+      valid = false;
+    } else if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setEmailError('Nieprawidłowy format e-mail');
+      valid = false;
+    } else {
+      setEmailError('');
+    }
+
+    if (!password) {
+      setPasswordError('Hasło jest wymagane');
+      valid = false;
+    } else if (password.length < 6) {
+      setPasswordError('Hasło musi mieć co najmniej 6 znaków');
+      valid = false;
+    } else {
+      setPasswordError('');
+    }
+
+    return valid;
+  };
+
+  const handleSignIn = async () => {
+    // najpierw walidacja pól
+    if (!validate()) return;
+  
+    setLoading(true);
+    try {
+      const resp = await fetch('http://10.0.2.2:5029/api/Auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          login: email,
+          password: password
+        })
+      });
+  
+      const data = await resp.json();
+  
+      if (resp.ok) {
+        await AsyncStorage.setItem('authToken', data.token);
+  
+        const meResp = await fetch('http://10.0.2.2:5029/api/Auth/me', {
+          headers: { Authorization: `Bearer ${data.token}` }
+        });
+        if (!meResp.ok) {
+          throw new Error('Nie udało się pobrać profilu');
+        }
+        const userProfile = await meResp.json();
+  
+        setAuth({ user: userProfile, token: data.token });
+  
+        navigation.replace('Home');
+      } else if (resp.status === 401) {
+        Alert.alert('Błąd logowania', data.message || 'Nieprawidłowy login lub hasło');
+      } else {
+        Alert.alert('Błąd serwera', `Kod: ${resp.status}`);
+      }
+    } catch (err) {
+      Alert.alert('Błąd sieci', err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleForgotPassword = () => {
-    // Przykładowo: navigation.navigate('ForgotPassword');
     console.log('Forgot Password pressed');
   };
 
@@ -46,7 +114,7 @@ export default function SigninScreen({ navigation }) {
                              Nagłówek: Kalamus + ikona pióra
                               ========================= */}
             <View style={styles.logoContainer}>
-              <Text style={styles.appName}>Kalamus</Text>
+              <Text style={styles.appName}>KeyOrder</Text>
               <Ionicons
                 name="pencil-outline"
                 size={32}
@@ -86,6 +154,8 @@ export default function SigninScreen({ navigation }) {
                 value={password}
                 onChangeText={setPassword}
               />
+
+{passwordError ? <Text style={{ color:'red' }}>{passwordError}</Text> : null}
 
               {/* Forgot Password */}
               <TouchableOpacity
@@ -134,6 +204,15 @@ export default function SigninScreen({ navigation }) {
                     color={styles.purple}
                   />
                 </TouchableOpacity>
+                
+              </View>
+              <View>
+              <TouchableOpacity
+                onPress={() => {navigation.navigate('Signup')}}
+                style={styles.forgotPasswordText}
+              >
+                <Text style={styles.forgotPasswordText}>Don't have account?</Text>
+              </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -145,7 +224,7 @@ export default function SigninScreen({ navigation }) {
 
 const PURPLE = '#3D0066';
 const WHITE = '#FFFFFF';
-const LIGHT_GRAY_BG = '#F2F2F7'; // jasnoszare tło inputów
+const LIGHT_GRAY_BG = '#F2F2F7'; 
 const DARK_GRAY = '#333333';
 
 const styles = StyleSheet.create({

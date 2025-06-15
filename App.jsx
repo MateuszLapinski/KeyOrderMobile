@@ -1,32 +1,28 @@
-
-import React from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 import { enableScreens } from 'react-native-screens';
 enableScreens();
+
 import {
   StatusBar,
   StyleSheet,
   View,
   SafeAreaView,
   useColorScheme,
+  Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NavigationContainer } from '@react-navigation/native';
+import { Colors } from 'react-native/Libraries/NewAppScreen';
 
-
-import {
-  Colors,
-} from 'react-native/Libraries/NewAppScreen';
-
-import HomeScreen from './src/screens/HomeScreen';
-import StartScreen from './src/screens/StartScreen';
-import LoginFirstScreen from './src/screens/LoginFirstScreen';
-import SignupScreen from './src/screens/SignupScreen';
-import SigninScreen from './src/screens/SigninScreen';
-import ResetPasswordEmailScreen from './src/screens/ResetPasswordEmailScreen';
-import ResetPasswordCodeScreen from './src/screens/ResetPasswordCodeScreen';
-import ResetPasswordSuccessScreen from './src/screens/ResetPasswordSuccessScreen';
-import ProductScreen from './src/screens/ProductsScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 
-function App() {
+export const AuthContext = createContext({
+  auth: { user: null, token: null },
+  setAuth: () => {},
+});
+
+export default function App() {
+  const [auth, setAuth] = useState({ user: null, token: null });
   const isDarkMode = useColorScheme() === 'dark';
 
   const backgroundStyle = {
@@ -34,19 +30,45 @@ function App() {
     backgroundColor: isDarkMode ? Colors.black : Colors.white,
   };
 
-  return (
-     
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      {/* HomeScreen wypełnia cały ekran */}
-      <View style={styles.container}>
-        <AppNavigator />
-      </View>
-    </SafeAreaView>
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem('authToken');
+        if (token) {
+          const resp = await fetch('http://10.0.2.2:5029/api/Auth/me', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (resp.ok) {
+            const user = await resp.json();
+            setAuth({ user, token });
+            console.log('🏷️ auth:', user);
+        
+          
+          } else {
+            await AsyncStorage.removeItem('authToken');
+            setAuth({ user: null, token: null });
+          }
+        }
+      } catch (e) {
+        Alert.alert('Błąd', 'Nie udało się przywrócić sesji.');
+      }
+    })();
+  }, []);
 
+  return (
+    <AuthContext.Provider value={{ auth, setAuth }}>
+      <SafeAreaView style={backgroundStyle}>
+        <StatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+          backgroundColor={backgroundStyle.backgroundColor}
+        />
+        <View style={styles.container}>
+          <NavigationContainer>
+            <AppNavigator />
+          </NavigationContainer>
+        </View>
+      </SafeAreaView>
+    </AuthContext.Provider>
   );
 }
 
@@ -55,5 +77,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-
-export default App;

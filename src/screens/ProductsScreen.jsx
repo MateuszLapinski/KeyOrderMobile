@@ -3,13 +3,14 @@ import {
   View,
   Text,
   FlatList,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  TextInput,
   Alert,
 } from 'react-native';
 import Footer from '../components/Footer';
+import ProductCard from '../components/ProductCard';
 
 export default function ProductScreen({ navigation }) {
   const [products, setProducts] = useState([]);
@@ -20,11 +21,8 @@ export default function ProductScreen({ navigation }) {
 
   const API_BASE = 'http://10.0.2.2:5029/api';
   const PRODUCTS_API = `${API_BASE}/products`;
-  // **Nowy endpoint zwraca full Product[]**
   const FAVORITE_API = `${API_BASE}/products/favorites/1`;
-  const clientId = 1;
 
-  // ładowanie wszystkich produktów
   useEffect(() => {
     fetch(PRODUCTS_API)
       .then(response => response.json())
@@ -36,11 +34,9 @@ export default function ProductScreen({ navigation }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // filtrowanie po nazwie
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
     if (q === '') {
-      // jak query puste — pokaż wszystko
       setFilteredProducts(products);
     } else {
       setFilteredProducts(
@@ -48,15 +44,23 @@ export default function ProductScreen({ navigation }) {
       );
     }
   }, [searchQuery, products]);
+  const refreshProducts = async () => {
+    try {
+      const res = await fetch(PRODUCTS_API);
+      const data = await res.json();
+      setProducts(data);
+      setFilteredProducts(data);
+    } catch (error) {
+      console.error('Błąd odświeżania produktów:', error);
+    }
+  };
 
-  // **fetch ulubionych – tutaj backend zwraca od razu tablicę Product**
   const fetchFavorites = async () => {
     setLoading(true);
     try {
       const res = await fetch(FAVORITE_API);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const favProducts = await res.json();
-      // od razu podstawiamy jako filteredProducts
       setFilteredProducts(favProducts);
     } catch (error) {
       console.error('Błąd pobierania ulubionych produktów:', error);
@@ -78,69 +82,65 @@ export default function ProductScreen({ navigation }) {
   };
 
   const totalItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
-
-  const renderItem = ({ item }) => {
-    const qty = cart[item.id] || 0;
-    return (
-      <View style={styles.itemContainer}>
-        <Text style={styles.productName}>{item.name}</Text>
-        <View style={styles.quantityControls}>
-          <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={styles.quantityButton}>
-            <Text style={styles.quantityText}>-</Text>
-          </TouchableOpacity>
-          <Text style={styles.quantityValue}>{qty}</Text>
-          <TouchableOpacity onPress={() => updateQuantity(item.id, 1)} style={styles.quantityButton}>
-            <Text style={styles.quantityText}>+</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  const orderValue = Object.entries(cart).reduce((total, [productId, quantity]) => {
+    const product = products.find(p => p.id === parseInt(productId));
+    if (!product) return total;
+    return total + product.unitPrice * quantity;
+  }, 0);
 
   const handleCheckout = async () => {
     try {
-      // Tworzenie zamówienia
       const newOrder = {
         clientId: 1,
         placedAt: new Date().toISOString(),
         status: 'Oczekuje',
-        value: 0, 
+        value: orderValue,
         shippingAddress: 'ul. Testowa 123, Warszawa',
         paymentMethod: 'Przelew 14 dni',
         notes: 'Zamówienie z aplikacji mobilnej'
       };
-  
-      const orderResponse = await fetch('http://10.0.2.2:5029/api/orders', {
+
+      const orderResponse = await fetch(`${API_BASE}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newOrder),
       });
-  
+
       const createdOrder = await orderResponse.json();
       const orderId = createdOrder.id;
-  
-      // Tworzenie OrderItemów
+
       const orderItems = Object.entries(cart).map(([productId, quantity]) => {
         const product = products.find(p => p.id === parseInt(productId));
         return {
-          orderId: orderId,
+          orderId,
           productId: product.id,
-          quantity: quantity,
+          quantity,
           price: product.unitPrice,
         };
       });
-  
-      // Wysłanie każdego OrderItem
+
       for (let item of orderItems) {
-        await fetch('http://10.0.2.2:5029/api/orderitems', {
+        await fetch(`${API_BASE}/orderitems`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item),
         });
+
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const newStock = product.stockQuantity - item.quantity;
+          await fetch(`${API_BASE}/products/${item.productId}/stock`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stockQuantity: newStock }),
+          });
+
+        }
       }
-  
+
       alert('Zamówienie zostało złożone!');
       setCart({});
+      await refreshProducts();
     } catch (error) {
       console.error('Błąd składania zamówienia:', error);
       alert('Nie udało się złożyć zamówienia.');
@@ -157,7 +157,6 @@ export default function ProductScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Search */}
       <TextInput
         placeholder="Szukaj produktu..."
         placeholderTextColor="#999"
@@ -166,7 +165,6 @@ export default function ProductScreen({ navigation }) {
         onChangeText={setSearchQuery}
       />
 
-      {/* Filtry */}
       <View style={styles.filterButtons}>
         <TouchableOpacity style={styles.filterButton} onPress={() => setFilteredProducts(products)}>
           <Text style={styles.filterText}>Wszystkie</Text>
@@ -176,15 +174,20 @@ export default function ProductScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Lista */}
       <FlatList
         data={filteredProducts}
         keyExtractor={item => item.id.toString()}
-        renderItem={renderItem}
+        renderItem={({ item }) => (
+          <ProductCard
+            product={item}
+            quantity={cart[item.id] || 0}
+            onIncrement={() => updateQuantity(item.id, 1)}
+            onDecrement={() => updateQuantity(item.id, -1)}
+          />
+        )}
         contentContainerStyle={styles.listContainer}
       />
 
-      {/* Pasek koszyka */}
       {totalItems > 0 && (
         <View style={styles.cartBar}>
           <Text style={styles.cartText}>
@@ -209,12 +212,6 @@ const styles = StyleSheet.create({
   filterButton: { flex: 1, backgroundColor: '#6200EE', padding: 10, borderRadius: 6, marginHorizontal: 4 },
   filterText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
   listContainer: { paddingBottom: 20 },
-  itemContainer: { padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 12 },
-  productName: { fontSize: 18, fontWeight: '600' },
-  quantityControls: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  quantityButton: { backgroundColor: '#6200EE', borderRadius: 4, padding: 8, marginHorizontal: 12 },
-  quantityText: { color: '#fff', fontSize: 18 },
-  quantityValue: { fontSize: 18 },
   cartBar: { backgroundColor: '#6200EE', padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cartText: { color: '#fff', fontSize: 16 },
   checkoutButton: { backgroundColor: '#fff', padding: 8, borderRadius: 6 },

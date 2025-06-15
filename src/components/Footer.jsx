@@ -16,12 +16,15 @@ export default function Footer() {
   const handleMenuPress = () => {
     navigation.navigate('Menu');
   };
+  const handleSalesPress = () =>{
+    navigation.navigate('Home')
+  }
 
   
   return (
 
     <View style={styles.footerContainer}>
-      <TouchableOpacity style={styles.tabButton} >
+      <TouchableOpacity style={styles.tabButton} onPress={handleSalesPress} >
         <Ionicons name="bar-chart-outline" size={24} color="#fff" />
         <Text style={styles.tabLabel}>Sales</Text>
       </TouchableOpacity>
@@ -33,6 +36,7 @@ export default function Footer() {
 
       <TouchableOpacity style={styles.centerButton}>
         <Ionicons name="home-outline" size={28} color="#6200EE" />
+        <Text >+</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.tabButton} onPress={handleOrdersPress}>

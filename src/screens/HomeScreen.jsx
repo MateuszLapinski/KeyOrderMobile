@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React from 'react';
 import {
   SafeAreaView,
   View,
@@ -8,54 +8,64 @@ import {
   StatusBar,
   Platform,
   Dimensions,
-  ActivityIndicator,
 } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { BarChart, PieChart } from 'react-native-chart-kit';
 import Footer from '../components/Footer';
 import StatsGrid from '../components/StatsGrid';
-import { AuthContext } from '../../App';
-
 
 export default function HomeScreen() {
-  const { auth } = useContext(AuthContext);
-  const user = auth.user;
   const screenWidth = Dimensions.get('window').width;
 
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const API_BASE = 'http://10.0.2.2:5029/api';
-  const ORDERS_API = `${API_BASE}/orders/company/${user.clientId}`;
-
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await fetch(`${ORDERS_API}`);
-        if (!res.ok) {
-          const text = await res.text(); // Zobacz co zwraca serwer
-          console.error('Błąd serwera:', res.status, text);
-          throw new Error(`HTTP ${res.status}`);
-        }
-    
-        const text = await res.text();
-        if (!text) {
-          console.warn('Pusta odpowiedź z serwera.');
-          setOrders([]);
-          return;
-        }
-    
-        const data = JSON.parse(text); // Ręczne parsowanie — kontrola
-        setOrders(data);
-      } catch (err) {
-        console.error('Błąd pobierania zamówień:', err);
-        Alert.alert('Błąd', 'Nie udało się pobrać zamówień.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchOrders();
-  }, []);
+  const orders = [
+    {
+      placedAt: '2025-01-15',
+      value: 1250,
+      orderItems: [
+        { product: { name: 'Produkt A' }, quantity: 10 },
+        { product: { name: 'Produkt B' }, quantity: 5 },
+      ],
+    },
+    {
+      placedAt: '2025-02-10',
+      value: 1800,
+      orderItems: [
+        { product: { name: 'Produkt A' }, quantity: 3 },
+        { product: { name: 'Produkt C' }, quantity: 8 },
+      ],
+    },
+    {
+      placedAt: '2025-03-22',
+      value: 900,
+      orderItems: [
+        { product: { name: 'Produkt B' }, quantity: 6 },
+        { product: { name: 'Produkt C' }, quantity: 4 },
+      ],
+    },
+    {
+      placedAt: '2025-04-03',
+      value: 1600,
+      orderItems: [
+        { product: { name: 'Produkt A' }, quantity: 5 },
+        { product: { name: 'Produkt D' }, quantity: 7 },
+      ],
+    },
+    {
+      placedAt: '2025-05-17',
+      value: 2000,
+      orderItems: [
+        { product: { name: 'Produkt E' }, quantity: 10 },
+      ],
+    },
+    {
+      placedAt: '2025-06-10',
+      value: 1400,
+      orderItems: [
+        { product: { name: 'Produkt A' }, quantity: 2 },
+        { product: { name: 'Produkt F' }, quantity: 6 },
+      ],
+    },
+  ];
 
   const salesDataMap = orders.reduce((acc, order) => {
     const month = new Date(order.placedAt).toLocaleString('default', { month: 'short' });
@@ -85,14 +95,6 @@ export default function HomeScreen() {
   }));
 
   const totalSales = orders.reduce((sum, o) => sum + o.value, 0).toFixed(2);
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <ActivityIndicator size="large" color="#6200EE" style={{ marginTop: 100 }} />
-      </SafeAreaView>
-    );
-  }
 
   return (
     <PaperProvider>
